@@ -2,342 +2,439 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HTML5 生詞翻轉卡 (隨機+過濾版)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>生詞字謎搜尋</title>
     <style>
+        :root {
+            --select-color: #f1c40f; /* 選取中的顏色 (黃色) */
+            --found-color: #2ecc71;  /* 找到後的顏色 (綠色) */
+            --bg-color: #2c3e50;
+        }
+
         body {
-            font-family: "微軟正黑體", "Helvetica Neue", Arial, sans-serif;
+            font-family: "微軟正黑體", sans-serif;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-            height: 100vh;
             background-color: #f0f2f5;
             margin: 0;
-            overflow: hidden; /* 防止動畫時出現卷軸 */
+            padding: 20px;
+            user-select: none; /* 禁止反白文字 */
+            touch-action: none; /* 防止手機滑動頁面 */
         }
 
         h1 { color: #333; margin-bottom: 10px; }
 
-        /* 卡片容器設定 */
-        .scene {
-            width: 600px;
-            height: 350px;
-            max-width: 90vw;
-            perspective: 1000px;
-            margin-bottom: 20px;
-            position: relative;
-        }
-
-        /* 實際翻轉的物件 */
-        .card {
-            width: 100%;
-            height: 100%;
-            position: relative;
-            transition: transform 0.6s;
-            transform-style: preserve-3d;
-            box-shadow: 0 8px 16px rgba(0,0,0,0.15);
-            border-radius: 15px;
-            cursor: pointer;
-        }
-
-        .card.is-flipped {
-            transform: rotateY(180deg);
-        }
-
-        .card__face {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            backface-visibility: hidden;
+        /* 遊戲主容器：左右排列 */
+        .game-container {
             display: flex;
-            flex-direction: column;
+            gap: 30px;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        /* 字謎網格區 */
+        #grid-area {
+            background: white;
+            padding: 10px;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            position: relative;
+            cursor: crosshair;
+        }
+
+        .row {
+            display: flex;
+        }
+
+        .cell {
+            width: 40px;
+            height: 40px;
+            display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 15px;
-            padding: 30px;
-            box-sizing: border-box;
-            text-align: center;
-        }
-
-        /* 正面樣式 */
-        .card__face--front {
-            background: white;
-            color: #2c3e50;
-            border: 2px solid #3498db;
-        }
-
-        .card__face--front h2 {
-            font-size: 3.5em;
-            margin: 0;
-        }
-
-        /* 背面樣式 */
-        .card__face--back {
-            background: #3498db;
-            color: white;
-            transform: rotateY(180deg);
-        }
-
-        .meaning {
-            font-size: 2em;
-            font-weight: bold;
-            margin-bottom: 20px;
-        }
-
-        .example {
-            font-size: 1.4em;
-            font-weight: 400;
-            font-style: italic;
-            line-height: 1.5;
-            background: rgba(255, 255, 255, 0.1);
-            padding: 10px 15px;
-            border-radius: 8px;
-        }
-
-        /* 按鈕區塊 */
-        .controls {
-            display: flex;
-            gap: 15px;
-            z-index: 10;
-        }
-
-        button {
-            padding: 12px 25px;
-            font-size: 1.1em;
-            cursor: pointer;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            transition: all 0.2s;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-        }
-
-        button:active {
-            transform: scale(0.95);
-        }
-
-        .btn-nav {
-            background-color: #2c3e50;
-        }
-        .btn-nav:hover { background-color: #34495e; }
-
-        /* "我認識" 按鈕特別樣式 */
-        .btn-known {
-            background-color: #27ae60; /* 綠色 */
-            font-weight: bold;
-        }
-        .btn-known:hover { background-color: #2ecc71; }
-
-        .counter {
-            margin-top: 20px;
-            color: #555;
             font-size: 1.2em;
             font-weight: bold;
+            color: #555;
+            border: 1px solid #eee;
+            box-sizing: border-box;
+            transition: background 0.1s;
         }
 
-        /* 完勝畫面 */
-        #game-over {
-            display: none; /* 預設隱藏 */
+        /* 選取狀態 */
+        .cell.selected {
+            background-color: var(--select-color);
+            color: white;
+            border-radius: 50%;
+        }
+
+        /* 找到狀態 */
+        .cell.found {
+            background-color: var(--found-color);
+            color: white;
+            animation: pop 0.3s;
+        }
+
+        /* 右側單字清單 */
+        .word-list {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            min-width: 200px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+
+        .word-list h3 { margin-top: 0; border-bottom: 2px solid #eee; padding-bottom: 10px;}
+
+        .word-item {
+            font-size: 1.2em;
+            margin-bottom: 8px;
+            color: #666;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .word-item.done {
+            text-decoration: line-through;
+            color: #bbb;
+        }
+        
+        .word-item.done::after {
+            content: "✔";
+            color: var(--found-color);
+        }
+
+        /* 控制按鈕 */
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 15px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 1em;
+            cursor: pointer;
+            background-color: var(--bg-color);
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        button:hover { opacity: 0.9; }
+
+        /* 畫線 Canvas (浮在網格上) */
+        #canvas-overlay {
             position: absolute;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(255,255,255,0.95);
-            z-index: 100;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
+            pointer-events: none; /* 讓點擊穿透到下方的 div */
         }
 
-        #game-over h2 {
-            color: #27ae60;
-            font-size: 3em;
-            margin-bottom: 20px;
+        @keyframes pop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
         }
 
-        .btn-restart {
-            background-color: #3498db;
-            font-size: 1.5em;
-            padding: 15px 40px;
+        /* 手機版調整 */
+        @media (max-width: 700px) {
+            .cell { width: 32px; height: 32px; font-size: 1em; }
+            .game-container { flex-direction: column-reverse; align-items: center; }
+            .word-list { width: 90%; }
         }
-
     </style>
 </head>
 <body>
 
-    <h1>隨機生詞練習</h1>
+    <h1>生詞字謎搜尋</h1>
+    <p style="color:#666; margin-top:0;">(請在網格中滑動找出右側的單字)</p>
 
-    <div class="scene">
-        <div class="card">
-            <div class="card__face card__face--front">
-                <h2 id="word-display">Loading...</h2>
-                <p style="font-size: 1rem; color: #888; margin-top: 10px;">(點擊翻看解釋)</p>
-            </div>
-            <div class="card__face card__face--back">
-                <div class="meaning" id="meaning-display"></div>
-                <div class="example" id="example-display"></div>
-            </div>
+    <div class="game-container">
+        <div class="word-list">
+            <h3>尋找清單:</h3>
+            <div id="words-to-find"></div>
         </div>
-        
-        <div id="game-over">
-            <h2>🎉 太棒了！</h2>
-            <p style="font-size: 1.5em; color: #555;">你已經複習完所有單字！</p>
-            <button class="btn-restart" onclick="restartGame()">重新開始</button>
-        </div>
+
+        <div id="grid-area">
+            </div>
     </div>
 
     <div class="controls">
-        <button class="btn-nav" id="skip-btn">跳過 (不熟)</button>
-        <button class="btn-known" id="known-btn">✅ 我認識 (移除)</button>
+        <button onclick="initGame()">重新生成 (刷新)</button>
     </div>
-    
-    <div class="counter">剩餘單字: <span id="remaining-count" style="color: #e74c3c;">0</span></div>
 
     <script src="words.js"></script>
 
     <script>
-        if (typeof wordData === 'undefined') {
-            alert("錯誤：找不到 words.js 檔案。");
-        }
-
-        let studyQueue = []; // 用來存放目前還沒背熟的單字清單
-        let currentIndex = 0;
+        // --- 設定 ---
+        const GRID_SIZE = 10; // 網格大小 10x10
+        const DIRECTIONS = [
+            [0, 1],  // 橫向 (向右)
+            [1, 0],  // 直向 (向下)
+            [1, 1],  // 斜向 (右下)
+            [-1, 1]  // 斜向 (右上) - 增加難度可開啟
+        ];
         
-        const card = document.querySelector('.card');
-        const wordDisplay = document.getElementById('word-display');
-        const meaningDisplay = document.getElementById('meaning-display');
-        const exampleDisplay = document.getElementById('example-display');
-        const remainingCountDisplay = document.getElementById('remaining-count');
-        const gameOverScreen = document.getElementById('game-over');
+        // 用來填補空白的隨機中文字 (常用字庫)
+        const FILLER_CHARS = "的一是在不了有和人這中大為上個國我以要他時來用們生到作地於出就分對成會可主發年動同工也能下過子說產種面而方後多定行學法所民得經十三之進著等部度家更完天";
 
-        let isAnimating = false;
+        // --- 變數 ---
+        let gridData = [];
+        let placedWords = []; // 實際成功放入的單字
+        let isSelecting = false;
+        let startCell = null;
+        let endCell = null;
+        let selectionPath = []; // 記錄選取路徑上的格子
 
-        // 洗牌演算法 (Fisher-Yates Shuffle)
-        function shuffle(array) {
-            for (let i = array.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [array[i], array[j]] = [array[j], array[i]];
+        // DOM
+        const gridArea = document.getElementById('grid-area');
+        const wordListEl = document.getElementById('words-to-find');
+
+        if (typeof wordData === 'undefined') {
+            alert("找不到 words.js");
+        }
+
+        // --- 核心邏輯: 遊戲初始化 ---
+        function initGame() {
+            // 1. 清空狀態
+            gridData = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(''));
+            placedWords = [];
+            gridArea.innerHTML = '';
+            wordListEl.innerHTML = '';
+
+            // 2. 選取單字 (取前10個，或全部)
+            // 先洗牌，增加隨機性
+            let shuffled = [...wordData].sort(() => 0.5 - Math.random());
+            let targetWords = shuffled.slice(0, 12); // 最多放12個，以免塞不下
+
+            // 3. 嘗試放入單字
+            targetWords.forEach(item => {
+                placeWord(item.word);
+            });
+
+            // 4. 填補空白並繪製網格
+            fillBlanksAndRender();
+
+            // 5. 顯示右側清單 (顯示 中文生詞)
+            // 如果您希望顯示英文讓學生找中文，把 `w.word` 改成 `w.meaning` 即可
+            placedWords.forEach(w => {
+                let div = document.createElement('div');
+                div.className = 'word-item';
+                div.id = `list-${w}`;
+                div.innerText = w; 
+                div.dataset.word = w;
+                wordListEl.appendChild(div);
+            });
+        }
+
+        // --- 邏輯: 放置單字 (Backtracking 概念) ---
+        function placeWord(word) {
+            // 嘗試 50 次隨機放置，如果都失敗就放棄這個字
+            let attempts = 0;
+            while (attempts < 50) {
+                const direction = DIRECTIONS[Math.floor(Math.random() * DIRECTIONS.length)];
+                const startRow = Math.floor(Math.random() * GRID_SIZE);
+                const startCol = Math.floor(Math.random() * GRID_SIZE);
+
+                if (canPlace(word, startRow, startCol, direction)) {
+                    // 真的放進去
+                    for (let i = 0; i < word.length; i++) {
+                        gridData[startRow + i * direction[0]][startCol + i * direction[1]] = word[i];
+                    }
+                    placedWords.push(word);
+                    return true;
+                }
+                attempts++;
             }
-            return array;
+            return false;
         }
 
-        function init() {
-            // 1. 複製一份原始資料到 studyQueue (避免修改到原始 wordData)
-            studyQueue = [...wordData];
-            
-            // 2. 隨機排列
-            shuffle(studyQueue);
-            
-            // 3. 重置狀態
-            currentIndex = 0;
-            gameOverScreen.style.display = 'none';
-            card.classList.remove('is-flipped'); // 確保卡片是正面
-            
-            updateCounter();
-            loadCard();
+        // 檢查是否能放
+        function canPlace(word, r, c, dir) {
+            for (let i = 0; i < word.length; i++) {
+                const nr = r + i * dir[0];
+                const nc = c + i * dir[1];
+
+                // 檢查邊界
+                if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE) return false;
+
+                // 檢查重疊 (如果該格是空的，或是跟目前字母一樣，就可以)
+                const cellChar = gridData[nr][nc];
+                if (cellChar !== '' && cellChar !== word[i]) return false;
+            }
+            return true;
         }
 
-        function updateCounter() {
-            remainingCountDisplay.textContent = studyQueue.length;
+        // --- 邏輯: 渲染畫面 ---
+        function fillBlanksAndRender() {
+            for (let r = 0; r < GRID_SIZE; r++) {
+                let rowDiv = document.createElement('div');
+                rowDiv.className = 'row';
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    // 填補空白
+                    if (gridData[r][c] === '') {
+                        gridData[r][c] = FILLER_CHARS[Math.floor(Math.random() * FILLER_CHARS.length)];
+                    }
+
+                    // 建立 DOM
+                    let cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.textContent = gridData[r][c];
+                    cell.dataset.r = r;
+                    cell.dataset.c = c;
+                    
+                    // 滑鼠/觸控事件
+                    cell.addEventListener('mousedown', handleStart);
+                    cell.addEventListener('mouseenter', handleMove);
+                    cell.addEventListener('touchstart', handleTouchStart, {passive: false});
+                    
+                    rowDiv.appendChild(cell);
+                }
+                gridArea.appendChild(rowDiv);
+            }
+            
+            // 全局結束事件
+            document.addEventListener('mouseup', handleEnd);
+            document.addEventListener('touchend', handleEnd);
         }
 
-        function loadCard() {
-            // 檢查是否還有單字
-            if (studyQueue.length === 0) {
-                showGameOver();
+        // --- 互動事件處理 ---
+        
+        function handleStart(e) {
+            isSelecting = true;
+            startCell = e.target;
+            highlightCells(startCell, startCell);
+        }
+
+        function handleMove(e) {
+            if (!isSelecting) return;
+            endCell = e.target;
+            highlightCells(startCell, endCell);
+        }
+
+        // 手機觸控模擬
+        function handleTouchStart(e) {
+            e.preventDefault(); // 防止捲動
+            let touch = e.touches[0];
+            let target = document.elementFromPoint(touch.clientX, touch.clientY);
+            if(target && target.classList.contains('cell')) {
+                handleStart({target: target});
+            }
+        }
+        
+        // 手機觸控移動 (需要綁在 gridArea 上)
+        gridArea.addEventListener('touchmove', function(e) {
+            if (!isSelecting) return;
+            e.preventDefault();
+            let touch = e.touches[0];
+            let target = document.elementFromPoint(touch.clientX, touch.clientY);
+            if (target && target.classList.contains('cell')) {
+                handleMove({target: target});
+            }
+        }, {passive: false});
+
+
+        function handleEnd() {
+            if (!isSelecting) return;
+            isSelecting = false;
+
+            // 檢查是否選中正確單字
+            const selectedWord = selectionPath.map(cell => cell.textContent).join('');
+            
+            // 支援反向選取 (例如從下往上拉)
+            const reversedWord = selectedWord.split('').reverse().join('');
+
+            if (checkWord(selectedWord) || checkWord(reversedWord)) {
+                // 答對了：標記為永久綠色
+                selectionPath.forEach(cell => cell.classList.add('found'));
+                
+                // 播放音效 (選用)
+                // speak(checkWord(selectedWord) ? selectedWord : reversedWord);
+            }
+
+            // 清除黃色選取狀態
+            document.querySelectorAll('.cell.selected').forEach(el => el.classList.remove('selected'));
+            selectionPath = [];
+            startCell = null;
+            endCell = null;
+        }
+
+        function highlightCells(start, end) {
+            // 清除舊的選取
+            document.querySelectorAll('.cell.selected').forEach(el => el.classList.remove('selected'));
+            selectionPath = [];
+
+            const r1 = parseInt(start.dataset.r);
+            const c1 = parseInt(start.dataset.c);
+            const r2 = parseInt(end.dataset.r);
+            const c2 = parseInt(end.dataset.c);
+
+            // 計算方向向量
+            let dr = r2 - r1;
+            let dc = c2 - c1;
+
+            // 判斷是否為直線 (橫、直、斜)
+            if (dr === 0 && dc === 0) {
+                // 同一格
+                start.classList.add('selected');
+                selectionPath.push(start);
                 return;
             }
 
-            // 確保索引不會超出範圍 (循環播放)
-            if (currentIndex >= studyQueue.length) {
-                currentIndex = 0;
-            }
-
-            const data = studyQueue[currentIndex];
-
-            // 如果卡片是翻開的，先翻回來再換字
-            if (card.classList.contains('is-flipped')) {
-                isAnimating = true;
-                card.classList.remove('is-flipped');
-                setTimeout(() => {
-                    updateText(data);
-                    isAnimating = false;
-                }, 200);
-            } else {
-                updateText(data);
-            }
-        }
-
-        function updateText(data) {
-            wordDisplay.textContent = data.word;
-            meaningDisplay.textContent = data.meaning;
-            exampleDisplay.textContent = data.example || "";
-        }
-
-        function showGameOver() {
-            gameOverScreen.style.display = 'flex';
-        }
-
-        function restartGame() {
-            init(); // 重新初始化
-        }
-
-        // --- 事件監聽 ---
-
-        // 翻轉卡片
-        document.querySelector('.scene').addEventListener('click', function(e) {
-            // 避免點到完勝畫面的按鈕時觸發翻牌
-            if (e.target.closest('#game-over')) return;
-            card.classList.toggle('is-flipped');
-        });
-
-        // 按鈕：跳過 (保留在清單中，只換下一張)
-        document.getElementById('skip-btn').addEventListener('click', function() {
-            if(isAnimating || studyQueue.length === 0) return;
-            currentIndex++; 
-            loadCard();
-        });
-
-        // 按鈕：我認識 (從清單中刪除，並換下一張)
-        document.getElementById('known-btn').addEventListener('click', function() {
-            if(isAnimating || studyQueue.length === 0) return;
-
-            // 核心邏輯：從陣列中移除目前的單字
-            studyQueue.splice(currentIndex, 1);
+            // 簡單正規化向量 (例如 (0, 5) 變成 (0, 1))
+            const steps = Math.max(Math.abs(dr), Math.abs(dc));
             
-            // 因為目前的被刪掉了，currentIndex 現在自然指向原本的"下一個"，
-            // 但如果我們刪的是最後一個，currentIndex 會超出範圍，loadCard 會處理這部分。
-            // 為了視覺流暢，我們通常維持 currentIndex 不變 (因為後面的會補上來)，
-            // 除非刪除的是最後一個元素。
-            if (currentIndex >= studyQueue.length) {
-                currentIndex = 0;
+            // 檢查是否為合法的 8 方向 (dx, dy 必須相等或者是 0)
+            if (Math.abs(dr) !== 0 && Math.abs(dc) !== 0 && Math.abs(dr) !== Math.abs(dc)) {
+                return; // 不是直線，不畫
             }
 
-            updateCounter();
-            loadCard();
-        });
+            const stepR = dr / steps;
+            const stepC = dc / steps;
 
-        // 鍵盤支援
-        document.addEventListener('keydown', (e) => {
-            if (studyQueue.length === 0) return;
-
-            if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'ArrowDown') {
-                e.preventDefault();
-                card.classList.toggle('is-flipped');
-            } else if (e.code === 'ArrowRight') {
-                // 右鍵視為"跳過"
-                document.getElementById('skip-btn').click();
-            } else if (e.code === 'Enter') {
-                // Enter 鍵視為"我認識"
-                document.getElementById('known-btn').click();
+            for (let i = 0; i <= steps; i++) {
+                let nr = r1 + Math.round(i * stepR);
+                let nc = c1 + Math.round(i * stepC);
+                
+                // 找到對應的 DOM
+                let cell = document.querySelector(`.cell[data-r='${nr}'][data-c='${nc}']`);
+                if (cell) {
+                    cell.classList.add('selected');
+                    selectionPath.push(cell);
+                }
             }
-        });
+        }
+
+        function checkWord(word) {
+            // 檢查是否在我們的列表中
+            if (placedWords.includes(word)) {
+                const listEl = document.getElementById(`list-${word}`);
+                if (listEl && !listEl.classList.contains('done')) {
+                    listEl.classList.add('done'); // 劃掉清單
+                    
+                    // 檢查是否全部完成
+                    if (document.querySelectorAll('.word-item.done').length === placedWords.length) {
+                        setTimeout(() => alert("恭喜！所有單字都找到了！"), 300);
+                    }
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // 語音功能 (選用)
+        function speak(text) {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel(); 
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'zh-TW';
+                window.speechSynthesis.speak(utterance);
+            }
+        }
 
         // 啟動
-        init();
+        initGame();
 
     </script>
 </body>
